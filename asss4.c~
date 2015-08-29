@@ -1,0 +1,77 @@
+#include<stdio.h>
+#include<sys/shm.h>
+#include<sys/stat.h>
+#include<unistd.h>
+#include<sys/types.h>
+#include<sys/ipc.h>
+#include<sys/msg.h>
+
+#define MEMSIZE 500
+#define MSGID 1000
+
+int main()
+{
+	struct msgp
+	{
+		long type;
+		int value;
+	} msg;
+	char *pbuff, *cbuff;	
+	int seg_id, msqid, stat = 0, temp = 0, msgsize = 0;
+	
+	seg_id = shmget(IPC_PRIVATE, MEMSIZE, S_IRUSR|S_IWUSR);
+	pbuff = (char *)shmat(seg_id, NULL, 0);
+	sprintf(pbuff, "20");
+	msqid = msgget(MSGID, 0600|IPC_CREAT);
+	
+	pid_t pid = fork();
+	if(pid < 0)
+	{
+		perror("fork()");
+		exit(EXIT_FAILURE);
+	}
+	if(pid > 0)
+	{
+		temp = atoi(pbuff);
+		msg.type=100;
+		msg.value=temp;
+		msgsize = sizeof(msg) - sizeof(long);
+
+		stat= msgsnd(msqid, &msgp, msgsize, 0);
+		if(stat != 0)
+		{
+			perror("msgsnd");
+			exit(EXIT_FAILURE);
+		}
+		else
+			printf("\nWriter #1 has successfully written message of type 100 to the message queue\n");
+		
+		temp++;
+		sprintf(pbuff, "%d", temp);
+		shmdt(pbuff);
+	}
+	if(pid == 0)
+	{
+		wait(NULL);
+		cbuff = (char *)shmat(seg_id, NULL, 0);
+		temp = atoi(cbuff);
+		msg.type = 200;
+		msg.value = temp;
+		msgsize = sizeof(msg) - sizeof(long);
+		shmdt(cbuff);
+
+		stat = msgsnd(msqid, &msg, sizeof(msg) - sizeof(long), 0);
+		if(stat != 0)
+		{
+			perror("msgsnd");
+			exit(EXIT_FAILURE);
+		}
+		else
+			printf("\nWriter #2 has successfully written message of type 200 to the message queue\n");
+
+		shmctl(seg_id, IPC_RMID, NULL);
+	}
+	
+
+return 0;
+}
